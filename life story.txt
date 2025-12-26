@@ -1,0 +1,110 @@
+-- Adonis Bootstrapper Dumper v2 - Handles Nil Parenting + LPH14 Obfuscation
+-- Enhanced to search for hidden remotes and parented modules
+-- Added brute-force remote invoke + full PlayerGui/PlayerScripts scan
+
+repeat task.wait() until game:IsLoaded()
+
+local ReplicatedStorage = game:GetService("ReplicatedStorage")
+local Players = game:GetService("Players")
+local Player = Players.LocalPlayer
+local PlayerGui = Player:WaitForChild("PlayerGui", 10)
+local PlayerScripts = Player:WaitForChild("PlayerScripts", 10)
+
+print("Searching for bootstrapper remote...")
+
+-- Brute-force find any RemoteFunction/RemoteEvent that could be the loader
+local bootstrapRemote = nil
+for _, obj in ipairs(ReplicatedStorage:GetChildren()) do
+    if obj:IsA("RemoteFunction") or obj:IsA("RemoteEvent") then
+        print("Potential remote found: " .. obj.Name .. " (" .. obj.ClassName .. ")")
+        bootstrapRemote = obj
+        -- Try invoking it
+        local success, result = pcall(function()
+            if obj:IsA("RemoteFunction") then
+                return obj:InvokeServer()
+            else
+                obj:FireServer()
+                return "Event fired"
+            end
+        end)
+        if success then
+            print("Invoke success on " .. obj.Name .. ": " .. tostring(result))
+            break
+        else
+            print("Invoke failed on " .. obj.Name .. ": " .. tostring(result))
+        end
+    end
+end
+
+if not bootstrapRemote then
+    warn("No remotes found in ReplicatedStorage! Game might load differently.")
+    -- Fallback: Check if bootstrapper is already parented somewhere
+end
+
+-- Disable all scripts to prevent auto-execution
+print("Disabling all scripts...")
+for _, obj in ipairs(game:GetDescendants()) do
+    if obj:IsA("LocalScript") or obj:IsA("Script") then
+        obj.Disabled = true
+    end
+end
+
+-- Wait longer for parenting
+task.wait(5)
+
+-- Search for any ModuleScript/LocalScript under PlayerGui/PlayerScripts/Player
+local bootstrapModule = nil
+local function searchForBootstrap(parent)
+    for _, child in ipairs(parent:GetDescendants()) do
+        if child:IsA("ModuleScript") or child:IsA("LocalScript") then
+            if child.Name:lower():find("boot") or child.Name:lower():find("init") or child.Name:lower():find("client") or child.Name:lower():find("adonis") then
+                bootstrapModule = child
+                print("Bootstrap module found: " .. child:GetFullName())
+                return true
+            end
+        end
+    end
+    return false
+end
+
+searchForBootstrap(PlayerGui)
+searchForBootstrap(PlayerScripts)
+searchForBootstrap(Player)
+
+if bootstrapModule then
+    print("Bootstrap module found: " .. bootstrapModule:GetFullName())
+    
+    -- Dump full hierarchy
+    local function dump(obj, indent)
+        indent = indent or ""
+        print(indent .. obj:GetFullName() .. " (" .. obj.ClassName .. ")")
+        for _, child in ipairs(obj:GetChildren()) do
+            dump(child, indent .. "  ")
+        end
+    end
+    
+    print("\nFull dump of PlayerGui:")
+    dump(PlayerGui)
+    
+    print("\nFull dump of PlayerScripts:")
+    dump(PlayerScripts)
+    
+    -- Attempt to get source (LPH14 obfuscated, but source is readable before require)
+    if bootstrapModule:IsA("ModuleScript") then
+        local source = bootstrapModule.Source
+        print("\nBootstrapper source preview (first 500 chars):")
+        print(source:sub(1, 500) .. "...")
+        
+        -- If you want full source (can be huge)
+        -- print("\nFull source:\n" .. source)
+    end
+    
+    print("\nTo deobfuscate LPH14: Save source to file and use Konstant V2.1 or LPH Deobfuscator")
+else
+    warn("No bootstrapper module found! Try these steps:")
+    print("1. Run: for _, v in PlayerGui:GetDescendants() do print(v:GetFullName()) end")
+    print("2. Look for ModuleScript/LocalScript names like 'Bootstrap', 'Init', 'Client', 'Adonis'")
+    print("3. Tell me the name and I'll help extract its source")
+end
+
+print("Dump complete. If module is LPH14, deobfuscate offline.")
